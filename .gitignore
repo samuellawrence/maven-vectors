@@ -1,44 +1,60 @@
+# Compiled class files
+*.class
+
+# Package files
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
 # Maven
 target/
-**/target/
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
 pom.xml.next
-dependency-reduced-pom.xml
 release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
 
-# Java
-*.class
-*.log
-
-# IDEs
-# IntelliJ
+# IDE - IntelliJ
 .idea/
 *.iml
-*.iws
 *.ipr
+*.iws
 out/
 
-# Eclipse
-.project
+# IDE - Eclipse
 .classpath
+.project
 .settings/
+bin/
 
-# VS Code
+# IDE - VS Code
 .vscode/
 
-# OS
+# IDE - NetBeans
+nbproject/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# OS files
 .DS_Store
 Thumbs.db
 
-# Build tools
-.gradle/
-
 # Logs
-logs/
 *.log
+logs/
 
-# Env files
-.env
-.env.*
+# Test output
+test-vectors.mvec
+*.mvec
+
+# Local configuration
+local.properties
