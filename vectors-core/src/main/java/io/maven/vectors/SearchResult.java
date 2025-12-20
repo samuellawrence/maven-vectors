@@ -18,9 +18,8 @@ public record SearchResult(
     
     public SearchResult {
         Objects.requireNonNull(chunk, "chunk cannot be null");
-        if (similarity < 0 || similarity > 1) {
-            throw new IllegalArgumentException("similarity must be between 0 and 1");
-        }
+        // Clamp similarity to valid range (handles floating point errors)
+        similarity = Math.max(0f, Math.min(1f, similarity));
     }
     
     /**

@@ -2,6 +2,7 @@ package io.maven.vectors.parser;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
+import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.*;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
@@ -37,7 +38,11 @@ public class JavaCodeChunker {
     
     public JavaCodeChunker(ChunkerConfig config) {
         this.config = config;
-        this.parser = new JavaParser();
+        
+        // Configure parser for Java 17 features (records, pattern matching, etc.)
+        ParserConfiguration parserConfig = new ParserConfiguration();
+        parserConfig.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
+        this.parser = new JavaParser(parserConfig);
     }
     
     /**
