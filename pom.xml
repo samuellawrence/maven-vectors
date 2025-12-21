@@ -49,6 +49,7 @@
         <!-- Dependency versions -->
         <javaparser.version>3.25.8</javaparser.version>
         <onnxruntime.version>1.16.3</onnxruntime.version>
+        <djl.version>0.25.0</djl.version>
         <jvector.version>2.0.0</jvector.version>
         <jackson.version>2.16.1</jackson.version>
         <slf4j.version>2.0.11</slf4j.version>
@@ -83,6 +84,13 @@
                 <groupId>com.microsoft.onnxruntime</groupId>
                 <artifactId>onnxruntime</artifactId>
                 <version>${onnxruntime.version}</version>
+            </dependency>
+
+            <!-- DJL HuggingFace Tokenizer -->
+            <dependency>
+                <groupId>ai.djl.huggingface</groupId>
+                <artifactId>tokenizers</artifactId>
+                <version>${djl.version}</version>
             </dependency>
 
             <!-- Vector search -->

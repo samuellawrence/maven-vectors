@@ -29,6 +29,12 @@
             <artifactId>onnxruntime</artifactId>
         </dependency>
 
+        <!-- DJL HuggingFace Tokenizer -->
+        <dependency>
+            <groupId>ai.djl.huggingface</groupId>
+            <artifactId>tokenizers</artifactId>
+        </dependency>
+
         <!-- JSON processing -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

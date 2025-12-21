@@ -1,22 +1,26 @@
 package io.maven.vectors.embeddings;
 
+import ai.djl.huggingface.tokenizers.Encoding;
+import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
 import ai.onnxruntime.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
 /**
- * ONNX Runtime based embedding model.
+ * ONNX Runtime based embedding model with HuggingFace tokenization.
  * 
  * <p>Loads and runs transformer models exported to ONNX format for generating
- * code embeddings locally without external API calls.</p>
+ * semantic code embeddings locally without external API calls.</p>
  */
 public class OnnxEmbeddingModel implements EmbeddingModel {
     
     private static final Logger log = LoggerFactory.getLogger(OnnxEmbeddingModel.class);
+    private static final int MAX_SEQUENCE_LENGTH = 256;
     
     private final String modelId;
     private final EmbeddingConfig config;
@@ -24,98 +28,131 @@ public class OnnxEmbeddingModel implements EmbeddingModel {
     
     private OrtEnvironment env;
     private OrtSession session;
-    private SimpleTokenizer tokenizer;
+    private HuggingFaceTokenizer tokenizer;
+    private boolean initialized = false;
     
     public OnnxEmbeddingModel(String modelId, EmbeddingConfig config) {
         this.modelId = modelId;
         this.config = config;
-        this.dimensions = getDimensionsForModel(modelId);
+        this.dimensions = ModelDownloader.getDimensions(modelId);
         
         try {
             initialize();
-        } catch (OrtException e) {
-            throw new RuntimeException("Failed to initialize ONNX model: " + modelId, e);
+        } catch (Exception e) {
+            log.warn("Failed to initialize ONNX model: {}. Will use fallback.", e.getMessage());
         }
     }
     
-    private void initialize() throws OrtException {
+    private void initialize() throws OrtException, IOException, InterruptedException {
         log.info("Initializing ONNX embedding model: {}", modelId);
         
         this.env = OrtEnvironment.getEnvironment();
-        this.tokenizer = new SimpleTokenizer(config.maxSequenceLength());
         
-        // Try to load model from cache or download
-        Path modelPath = getModelPath();
+        // Check if model is cached, if not download it
+        ModelDownloader downloader = new ModelDownloader(config.cacheDir());
+        Path modelDir;
         
-        if (Files.exists(modelPath)) {
-            log.info("Loading model from cache: {}", modelPath);
-            OrtSession.SessionOptions options = new OrtSession.SessionOptions();
-            this.session = env.createSession(modelPath.toString(), options);
+        if (downloader.isCached(modelId)) {
+            String safeName = modelId.replace("/", "_").replace("\\", "_");
+            modelDir = config.cacheDir().resolve(safeName);
+            log.info("Using cached model: {}", modelDir);
         } else {
-            log.warn("ONNX model not found at: {}", modelPath);
-            log.warn("Falling back to SimpleEmbeddingModel behavior (hash-based embeddings)");
-            log.warn("To use real embeddings, download the ONNX model manually or use: mvn vectors:download-model");
-            this.session = null;
+            log.info("Model not found in cache. Downloading...");
+            try {
+                modelDir = downloader.downloadModel(modelId);
+            } catch (Exception e) {
+                log.warn("Failed to download model: {}. Using fallback embeddings.", e.getMessage());
+                return;
+            }
         }
+        
+        Path modelPath = modelDir.resolve("model.onnx");
+        Path tokenizerPath = modelDir.resolve("tokenizer.json");
+        
+        if (!Files.exists(modelPath) || !Files.exists(tokenizerPath)) {
+            log.warn("Model files not found at: {}", modelDir);
+            return;
+        }
+        
+        // Load ONNX model
+        log.info("Loading ONNX model from: {}", modelPath);
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+        this.session = env.createSession(modelPath.toString(), options);
+        
+        // Load tokenizer
+        log.info("Loading tokenizer from: {}", tokenizerPath);
+        this.tokenizer = HuggingFaceTokenizer.newInstance(tokenizerPath);
+        
+        this.initialized = true;
+        log.info("ONNX model initialized successfully. Dimensions: {}", dimensions);
     }
     
     @Override
     public float[] embed(String code) {
-        if (session == null) {
-            // Fallback to hash-based embedding
+        if (!initialized) {
             return hashBasedEmbedding(code);
         }
         
         try {
             // Tokenize
-            long[] inputIds = tokenizer.tokenize(code);
-            long[] attentionMask = new long[inputIds.length];
-            Arrays.fill(attentionMask, 1L);
+            Encoding encoding = tokenizer.encode(code);
+            long[] inputIds = encoding.getIds();
+            long[] attentionMask = encoding.getAttentionMask();
             
-            // Create tensors - pass 2D arrays, ONNX infers shape automatically
+            // Pad/truncate to fixed length
+            inputIds = padOrTruncate(inputIds, MAX_SEQUENCE_LENGTH);
+            attentionMask = padOrTruncate(attentionMask, MAX_SEQUENCE_LENGTH);
+            
+            // Create tensors with shape [1, seq_length]
             long[][] inputIds2D = new long[][]{inputIds};
             long[][] attentionMask2D = new long[][]{attentionMask};
             
             OnnxTensor inputIdsTensor = OnnxTensor.createTensor(env, inputIds2D);
             OnnxTensor attentionMaskTensor = OnnxTensor.createTensor(env, attentionMask2D);
             
-            // Run inference
+            // Prepare inputs
             Map<String, OnnxTensor> inputs = new HashMap<>();
             inputs.put("input_ids", inputIdsTensor);
             inputs.put("attention_mask", attentionMaskTensor);
             
-            OrtSession.Result result = session.run(inputs);
+            // Some models also need token_type_ids
+            long[][] tokenTypeIds2D = new long[1][MAX_SEQUENCE_LENGTH];
+            OnnxTensor tokenTypeIdsTensor = OnnxTensor.createTensor(env, tokenTypeIds2D);
+            inputs.put("token_type_ids", tokenTypeIdsTensor);
             
-            // Extract embedding - handle both 2D [batch, hidden] and 3D [batch, seq, hidden] outputs
-            Object outputValue = result.get(0).getValue();
-            float[] embedding;
-            
-            if (outputValue instanceof float[][]) {
-                // 2D output: [batch, hidden] - direct embedding
-                float[][] output2D = (float[][]) outputValue;
-                embedding = output2D[0];
-            } else if (outputValue instanceof float[][][]) {
-                // 3D output: [batch, seq, hidden] - use CLS token (first token)
-                float[][][] output3D = (float[][][]) outputValue;
-                embedding = output3D[0][0];
-            } else {
-                throw new OrtException("Unexpected output tensor shape");
+            try (OrtSession.Result result = session.run(inputs)) {
+                // Get output - shape is [1, seq_length, hidden_size]
+                Object outputValue = result.get(0).getValue();
+                float[] embedding;
+                
+                if (outputValue instanceof float[][][]) {
+                    // 3D output: apply mean pooling
+                    float[][][] output3D = (float[][][]) outputValue;
+                    embedding = meanPooling(output3D[0], attentionMask);
+                } else if (outputValue instanceof float[][]) {
+                    // 2D output: already pooled
+                    float[][] output2D = (float[][]) outputValue;
+                    embedding = output2D[0];
+                } else {
+                    log.warn("Unexpected output type: {}", outputValue.getClass());
+                    return hashBasedEmbedding(code);
+                }
+                
+                // L2 normalize
+                if (config.normalizeOutput()) {
+                    normalize(embedding);
+                }
+                
+                return embedding;
+                
+            } finally {
+                inputIdsTensor.close();
+                attentionMaskTensor.close();
+                tokenTypeIdsTensor.close();
             }
-            
-            // Normalize if configured
-            if (config.normalizeOutput()) {
-                normalize(embedding);
-            }
-            
-            // Cleanup
-            inputIdsTensor.close();
-            attentionMaskTensor.close();
-            result.close();
-            
-            return embedding;
             
         } catch (OrtException e) {
-            log.error("ONNX inference failed, falling back to hash-based embedding", e);
+            log.error("ONNX inference failed: {}", e.getMessage());
             return hashBasedEmbedding(code);
         }
     }
@@ -150,16 +187,44 @@ public class OnnxEmbeddingModel implements EmbeddingModel {
             if (session != null) {
                 session.close();
             }
-        } catch (OrtException e) {
-            log.warn("Error closing ONNX session", e);
+            if (tokenizer != null) {
+                tokenizer.close();
+            }
+        } catch (Exception e) {
+            log.warn("Error closing ONNX resources", e);
         }
     }
     
-    private Path getModelPath() {
-        String safeName = modelId.replace("/", "_").replace("\\", "_");
-        return config.cacheDir().resolve(safeName).resolve("model.onnx");
+    /**
+     * Mean pooling over token embeddings, weighted by attention mask.
+     */
+    private float[] meanPooling(float[][] tokenEmbeddings, long[] attentionMask) {
+        int seqLength = tokenEmbeddings.length;
+        int hiddenSize = tokenEmbeddings[0].length;
+        float[] pooled = new float[hiddenSize];
+        float maskSum = 0;
+        
+        for (int i = 0; i < seqLength; i++) {
+            if (attentionMask[i] == 1) {
+                maskSum++;
+                for (int j = 0; j < hiddenSize; j++) {
+                    pooled[j] += tokenEmbeddings[i][j];
+                }
+            }
+        }
+        
+        if (maskSum > 0) {
+            for (int j = 0; j < hiddenSize; j++) {
+                pooled[j] /= maskSum;
+            }
+        }
+        
+        return pooled;
     }
     
+    /**
+     * L2 normalization.
+     */
     private void normalize(float[] vector) {
         float norm = 0;
         for (float v : vector) {
@@ -174,8 +239,25 @@ public class OnnxEmbeddingModel implements EmbeddingModel {
         }
     }
     
+    /**
+     * Pad or truncate array to target length.
+     */
+    private long[] padOrTruncate(long[] array, int targetLength) {
+        if (array.length == targetLength) {
+            return array;
+        }
+        
+        long[] result = new long[targetLength];
+        int copyLength = Math.min(array.length, targetLength);
+        System.arraycopy(array, 0, result, 0, copyLength);
+        // Remaining elements are already 0 (padding)
+        return result;
+    }
+    
+    /**
+     * Fallback hash-based embedding when model not available.
+     */
     private float[] hashBasedEmbedding(String code) {
-        // Fallback hash-based embedding when model not available
         Random random = new Random(code.hashCode());
         float[] embedding = new float[dimensions];
         for (int i = 0; i < dimensions; i++) {
@@ -185,54 +267,5 @@ public class OnnxEmbeddingModel implements EmbeddingModel {
             normalize(embedding);
         }
         return embedding;
-    }
-    
-    private int getDimensionsForModel(String modelId) {
-        if (modelId.contains("unixcoder") || modelId.contains("codebert") || modelId.contains("codet5")) {
-            return 768;
-        } else if (modelId.contains("MiniLM")) {
-            return 384;
-        }
-        return 768;
-    }
-    
-    /**
-     * Simple tokenizer that converts text to token IDs.
-     * 
-     * <p>This is a simplified tokenizer for demonstration. 
-     * In production, use HuggingFace tokenizers or similar.</p>
-     */
-    private static class SimpleTokenizer {
-        private final int maxLength;
-        
-        SimpleTokenizer(int maxLength) {
-            this.maxLength = maxLength;
-        }
-        
-        long[] tokenize(String text) {
-            // Simple character-level tokenization
-            // In production, load actual tokenizer vocabulary
-            String[] words = text.split("\\s+");
-            List<Long> tokens = new ArrayList<>();
-            
-            // Add [CLS] token
-            tokens.add(101L);
-            
-            for (String word : words) {
-                if (tokens.size() >= maxLength - 1) break;
-                // Simple hash-based token ID
-                tokens.add((long) (Math.abs(word.hashCode()) % 30000) + 1000);
-            }
-            
-            // Add [SEP] token
-            tokens.add(102L);
-            
-            // Pad to fixed length
-            while (tokens.size() < maxLength) {
-                tokens.add(0L);
-            }
-            
-            return tokens.stream().limit(maxLength).mapToLong(Long::longValue).toArray();
-        }
     }
 }

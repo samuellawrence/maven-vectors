@@ -3,6 +3,7 @@ package io.maven.vectors.cli;
 import io.maven.vectors.*;
 import io.maven.vectors.embeddings.EmbeddingConfig;
 import io.maven.vectors.embeddings.EmbeddingModel;
+import io.maven.vectors.embeddings.ModelDownloader;
 import io.maven.vectors.parser.JavaCodeChunker;
 import picocli.CommandLine;
 import picocli.CommandLine.*;
@@ -26,7 +27,8 @@ import java.util.concurrent.Callable;
         VectorsCli.QueryCommand.class,
         VectorsCli.StatsCommand.class,
         VectorsCli.AnomaliesCommand.class,
-        VectorsCli.DuplicatesCommand.class
+        VectorsCli.DuplicatesCommand.class,
+        VectorsCli.DownloadCommand.class
     }
 )
 public class VectorsCli implements Callable<Integer> {
@@ -57,7 +59,7 @@ public class VectorsCli implements Callable<Integer> {
         @Option(names = {"-o", "--output"}, description = "Output file path", defaultValue = "vectors.mvec")
         private Path outputPath;
         
-        @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "microsoft/unixcoder-base")
+        @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "all-MiniLM-L6-v2")
         private String model;
         
         @Option(names = {"--include-tests"}, description = "Include test files")
@@ -79,8 +81,8 @@ public class VectorsCli implements Callable<Integer> {
                 return 1;
             }
             
-            // Generate embeddings
-            EmbeddingConfig config = EmbeddingConfig.defaults();
+            // Generate embeddings with ONNX backend
+            EmbeddingConfig config = EmbeddingConfig.onnx();
             try (EmbeddingModel embeddingModel = EmbeddingModel.load(model, config)) {
                 
                 IndexConfig indexConfig = IndexConfig.forModel(model, embeddingModel.getDimensions());
@@ -130,7 +132,7 @@ public class VectorsCli implements Callable<Integer> {
         @Option(names = {"-n", "--top"}, description = "Number of results", defaultValue = "10")
         private int topK;
         
-        @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "microsoft/unixcoder-base")
+        @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "all-MiniLM-L6-v2")
         private String model;
         
         @Option(names = {"--show-code"}, description = "Show code snippets", defaultValue = "true")
@@ -142,7 +144,7 @@ public class VectorsCli implements Callable<Integer> {
             
             VectorIndex index = VectorIndex.load(indexPath);
             
-            EmbeddingConfig config = EmbeddingConfig.defaults();
+            EmbeddingConfig config = EmbeddingConfig.onnx();
             try (EmbeddingModel embeddingModel = EmbeddingModel.load(model, config)) {
                 
                 if (index instanceof InMemoryVectorIndex memIndex) {
@@ -292,6 +294,54 @@ public class VectorsCli implements Callable<Integer> {
             
             index.close();
             return 0;
+        }
+    }
+    
+    /**
+     * Download an embedding model.
+     */
+    @Command(
+        name = "download",
+        description = "Download an embedding model from HuggingFace"
+    )
+    static class DownloadCommand implements Callable<Integer> {
+        
+        @Option(names = {"-m", "--model"}, description = "Model to download", defaultValue = "all-MiniLM-L6-v2")
+        private String model;
+        
+        @Option(names = {"-d", "--dir"}, description = "Cache directory")
+        private Path cacheDir;
+        
+        @Override
+        public Integer call() throws Exception {
+            Path targetDir = cacheDir;
+            if (targetDir == null) {
+                targetDir = Path.of(System.getProperty("user.home"), ".maven-vectors", "models");
+            }
+            
+            System.out.println("Downloading model: " + model);
+            System.out.println("Cache directory: " + targetDir);
+            System.out.println();
+            
+            ModelDownloader downloader = new ModelDownloader(targetDir);
+            
+            if (downloader.isCached(model)) {
+                System.out.println("Model already cached!");
+                return 0;
+            }
+            
+            try {
+                Path modelDir = downloader.downloadModel(model);
+                System.out.println();
+                System.out.println("Model downloaded successfully to: " + modelDir);
+                System.out.println();
+                System.out.println("You can now use semantic embeddings with:");
+                System.out.println("  vectors index <path> -m " + model + " -o output.mvec");
+                return 0;
+            } catch (Exception e) {
+                System.err.println("Failed to download model: " + e.getMessage());
+                return 1;
+            }
         }
     }
 }

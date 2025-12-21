@@ -18,7 +18,9 @@ public record SearchResult(
     
     public SearchResult {
         Objects.requireNonNull(chunk, "chunk cannot be null");
-        // Clamp similarity to valid range (handles floating point errors)
+        // Convert cosine similarity from [-1, 1] to [0, 1] range
+        // Then clamp to handle floating point errors
+        similarity = (similarity + 1f) / 2f;
         similarity = Math.max(0f, Math.min(1f, similarity));
     }
     
