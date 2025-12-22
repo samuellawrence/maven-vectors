@@ -27,26 +27,46 @@ public class ModelDownloader {
     /**
      * Known model configurations.
      */
-    private static final Map<String, ModelInfo> KNOWN_MODELS = Map.of(
-        "all-MiniLM-L6-v2", new ModelInfo(
-            "sentence-transformers/all-MiniLM-L6-v2",
+    private static final Map<String, ModelInfo> KNOWN_MODELS = Map.ofEntries(
+        // General purpose sentence embedding (smaller, faster)
+        Map.entry("all-MiniLM-L6-v2", new ModelInfo(
+            "Xenova/all-MiniLM-L6-v2",
             "onnx/model.onnx",
             "tokenizer.json",
             384
-        ),
-        "microsoft/unixcoder-base", new ModelInfo(
-            "Xenova/unixcoder-base",
-            "onnx/model.onnx",
+        )),
+        // Jina Code - best for code search (8K context, 30+ languages)
+        Map.entry("jina-code", new ModelInfo(
+            "maven-vectors/jina-code-onnx",
+            "model.onnx",
             "tokenizer.json",
             768
-        ),
-        "microsoft/codebert-base", new ModelInfo(
-            "Xenova/codebert-base",
-            "onnx/model.onnx",
+        )),
+        // Alias for Jina Code
+        Map.entry("jinaai/jina-embeddings-v2-base-code", new ModelInfo(
+            "maven-vectors/jina-code-onnx",
+            "model.onnx",
             "tokenizer.json",
             768
-        )
+        )),
+        // UniXcoder - alternative code model
+        Map.entry("unixcoder", new ModelInfo(
+            "maven-vectors/unixcoder-base-onnx",
+            "model.onnx",
+            "tokenizer.json",
+            768
+        )),
+        // Alias for UniXcoder
+        Map.entry("microsoft/unixcoder-base", new ModelInfo(
+            "maven-vectors/unixcoder-base-onnx",
+            "model.onnx",
+            "tokenizer.json",
+            768
+        ))
     );
+    
+    /** Default model for code search */
+    public static final String DEFAULT_MODEL = "jina-code";
     
     private final HttpClient httpClient;
     private final Path cacheDir;

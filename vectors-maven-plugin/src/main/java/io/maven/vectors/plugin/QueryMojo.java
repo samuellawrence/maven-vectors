@@ -50,7 +50,7 @@ public class QueryMojo extends AbstractMojo {
     /**
      * Embedding model (must match the one used for generation).
      */
-    @Parameter(property = "vectors.model", defaultValue = "microsoft/unixcoder-base")
+    @Parameter(property = "vectors.model", defaultValue = "jina-code")
     private String model;
     
     /**

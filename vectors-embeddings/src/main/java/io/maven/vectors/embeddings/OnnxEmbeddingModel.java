@@ -25,16 +25,19 @@ public class OnnxEmbeddingModel implements EmbeddingModel {
     private final String modelId;
     private final EmbeddingConfig config;
     private final int dimensions;
+    private final CodePreprocessor preprocessor;
     
     private OrtEnvironment env;
     private OrtSession session;
     private HuggingFaceTokenizer tokenizer;
     private boolean initialized = false;
+    private Set<String> expectedInputs;
     
     public OnnxEmbeddingModel(String modelId, EmbeddingConfig config) {
         this.modelId = modelId;
         this.config = config;
         this.dimensions = ModelDownloader.getDimensions(modelId);
+        this.preprocessor = config.preprocessCode() ? CodePreprocessor.defaults() : null;
         
         try {
             initialize();
@@ -79,6 +82,10 @@ public class OnnxEmbeddingModel implements EmbeddingModel {
         OrtSession.SessionOptions options = new OrtSession.SessionOptions();
         this.session = env.createSession(modelPath.toString(), options);
         
+        // Get expected input names from model
+        this.expectedInputs = session.getInputNames();
+        log.info("Model expects inputs: {}", expectedInputs);
+        
         // Load tokenizer
         log.info("Loading tokenizer from: {}", tokenizerPath);
         this.tokenizer = HuggingFaceTokenizer.newInstance(tokenizerPath);
@@ -94,8 +101,15 @@ public class OnnxEmbeddingModel implements EmbeddingModel {
         }
         
         try {
+            // Preprocess code if enabled
+            String textToEmbed = code;
+            if (preprocessor != null) {
+                textToEmbed = preprocessor.preprocess(code);
+                log.debug("Preprocessed text: {}", textToEmbed.substring(0, Math.min(100, textToEmbed.length())));
+            }
+            
             // Tokenize
-            Encoding encoding = tokenizer.encode(code);
+            Encoding encoding = tokenizer.encode(textToEmbed);
             long[] inputIds = encoding.getIds();
             long[] attentionMask = encoding.getAttentionMask();
             
@@ -110,15 +124,21 @@ public class OnnxEmbeddingModel implements EmbeddingModel {
             OnnxTensor inputIdsTensor = OnnxTensor.createTensor(env, inputIds2D);
             OnnxTensor attentionMaskTensor = OnnxTensor.createTensor(env, attentionMask2D);
             
-            // Prepare inputs
+            // Prepare inputs - only add what the model expects
             Map<String, OnnxTensor> inputs = new HashMap<>();
             inputs.put("input_ids", inputIdsTensor);
-            inputs.put("attention_mask", attentionMaskTensor);
+            
+            if (expectedInputs.contains("attention_mask")) {
+                inputs.put("attention_mask", attentionMaskTensor);
+            }
             
             // Some models also need token_type_ids
-            long[][] tokenTypeIds2D = new long[1][MAX_SEQUENCE_LENGTH];
-            OnnxTensor tokenTypeIdsTensor = OnnxTensor.createTensor(env, tokenTypeIds2D);
-            inputs.put("token_type_ids", tokenTypeIdsTensor);
+            OnnxTensor tokenTypeIdsTensor = null;
+            if (expectedInputs.contains("token_type_ids")) {
+                long[][] tokenTypeIds2D = new long[1][MAX_SEQUENCE_LENGTH];
+                tokenTypeIdsTensor = OnnxTensor.createTensor(env, tokenTypeIds2D);
+                inputs.put("token_type_ids", tokenTypeIdsTensor);
+            }
             
             try (OrtSession.Result result = session.run(inputs)) {
                 // Get output - shape is [1, seq_length, hidden_size]
@@ -148,7 +168,9 @@ public class OnnxEmbeddingModel implements EmbeddingModel {
             } finally {
                 inputIdsTensor.close();
                 attentionMaskTensor.close();
-                tokenTypeIdsTensor.close();
+                if (tokenTypeIdsTensor != null) {
+                    tokenTypeIdsTensor.close();
+                }
             }
             
         } catch (OrtException e) {

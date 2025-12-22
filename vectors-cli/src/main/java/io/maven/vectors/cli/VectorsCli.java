@@ -59,7 +59,7 @@ public class VectorsCli implements Callable<Integer> {
         @Option(names = {"-o", "--output"}, description = "Output file path", defaultValue = "vectors.mvec")
         private Path outputPath;
         
-        @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "all-MiniLM-L6-v2")
+        @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "jina-code")
         private String model;
         
         @Option(names = {"--include-tests"}, description = "Include test files")
@@ -132,7 +132,7 @@ public class VectorsCli implements Callable<Integer> {
         @Option(names = {"-n", "--top"}, description = "Number of results", defaultValue = "10")
         private int topK;
         
-        @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "all-MiniLM-L6-v2")
+        @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "jina-code")
         private String model;
         
         @Option(names = {"--show-code"}, description = "Show code snippets", defaultValue = "true")
@@ -306,7 +306,7 @@ public class VectorsCli implements Callable<Integer> {
     )
     static class DownloadCommand implements Callable<Integer> {
         
-        @Option(names = {"-m", "--model"}, description = "Model to download", defaultValue = "all-MiniLM-L6-v2")
+        @Option(names = {"-m", "--model"}, description = "Model to download", defaultValue = "jina-code")
         private String model;
         
         @Option(names = {"-d", "--dir"}, description = "Cache directory")

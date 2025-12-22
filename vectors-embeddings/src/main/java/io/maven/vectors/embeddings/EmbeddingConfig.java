@@ -20,7 +20,10 @@ public record EmbeddingConfig(
     int batchSize,
     
     /** Whether to normalize output vectors */
-    boolean normalizeOutput
+    boolean normalizeOutput,
+    
+    /** Whether to preprocess code (split camelCase, etc.) */
+    boolean preprocessCode
 ) {
     
     public static EmbeddingConfig defaults() {
@@ -29,7 +32,8 @@ public record EmbeddingConfig(
             Paths.get(System.getProperty("user.home"), ".maven-vectors", "models"),
             512,
             32,
-            true
+            true,
+            false
         );
     }
     
@@ -39,16 +43,21 @@ public record EmbeddingConfig(
             Paths.get(System.getProperty("user.home"), ".maven-vectors", "models"),
             512,
             32,
-            true
+            true,
+            true  // Enable preprocessing for better code search
         );
     }
     
     public EmbeddingConfig withBackend(EmbeddingBackend backend) {
-        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput);
+        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, preprocessCode);
     }
     
     public EmbeddingConfig withCacheDir(Path cacheDir) {
-        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput);
+        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, preprocessCode);
+    }
+    
+    public EmbeddingConfig withPreprocessing(boolean enabled) {
+        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, enabled);
     }
 }
 

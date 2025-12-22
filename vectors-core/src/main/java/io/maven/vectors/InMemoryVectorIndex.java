@@ -121,8 +121,8 @@ public class InMemoryVectorIndex implements VectorIndex {
             results.add(SearchResult.of(chunks.get(i), similarity));
         }
         
-        // Sort and return top-K
-        results.sort(Comparator.reverseOrder());
+        // Sort and return top-K (compareTo sorts by similarity descending)
+        results.sort(Comparator.naturalOrder());
         return results.stream()
             .limit(topK)
             .collect(Collectors.toList());
@@ -145,7 +145,7 @@ public class InMemoryVectorIndex implements VectorIndex {
             }
         }
         
-        results.sort(Comparator.reverseOrder());
+        results.sort(Comparator.naturalOrder());
         return results.stream()
             .limit(topK)
             .collect(Collectors.toList());

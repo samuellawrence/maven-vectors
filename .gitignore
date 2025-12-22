@@ -58,3 +58,4 @@ test-vectors.mvec
 
 # Local configuration
 local.properties
+scripts/

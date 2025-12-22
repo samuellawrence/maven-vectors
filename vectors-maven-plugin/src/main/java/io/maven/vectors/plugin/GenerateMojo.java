@@ -39,7 +39,7 @@ public class GenerateMojo extends AbstractMojo {
     /**
      * Embedding model to use.
      */
-    @Parameter(property = "vectors.model", defaultValue = "microsoft/unixcoder-base")
+    @Parameter(property = "vectors.model", defaultValue = "jina-code")
     private String model;
     
     /**
