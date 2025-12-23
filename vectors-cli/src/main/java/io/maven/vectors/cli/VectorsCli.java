@@ -73,8 +73,9 @@ public class VectorsCli implements Callable<Integer> {
         
         @Override
         public Integer call() throws Exception {
+            String resolvedModel = resolveModel(model, provider);
             System.out.println("Indexing project: " + projectPath);
-            System.out.println("Using model: " + model);
+            System.out.println("Using model: " + resolvedModel);
             System.out.println("Provider: " + provider);
             
             // Parse source files
@@ -90,9 +91,9 @@ public class VectorsCli implements Callable<Integer> {
             
             // Configure embedding provider
             EmbeddingConfig config = createConfig(provider, apiKey);
-            try (EmbeddingModel embeddingModel = EmbeddingModel.load(model, config)) {
+            try (EmbeddingModel embeddingModel = EmbeddingModel.load(resolvedModel, config)) {
                 
-                IndexConfig indexConfig = IndexConfig.forModel(model, embeddingModel.getDimensions());
+                IndexConfig indexConfig = IndexConfig.forModel(resolvedModel, embeddingModel.getDimensions());
                 VectorIndex index = VectorIndex.create(indexConfig);
                 
                 System.out.println("Generating embeddings...");
@@ -152,12 +153,14 @@ public class VectorsCli implements Callable<Integer> {
         
         @Override
         public Integer call() throws Exception {
+            String resolvedModel = resolveModel(model, provider);
             System.out.println("Searching for: " + query);
+            System.out.println("Using model: " + resolvedModel + " (" + provider + ")");
             
             VectorIndex index = VectorIndex.load(indexPath);
             
             EmbeddingConfig config = createConfig(provider, apiKey);
-            try (EmbeddingModel embeddingModel = EmbeddingModel.load(model, config)) {
+            try (EmbeddingModel embeddingModel = EmbeddingModel.load(resolvedModel, config)) {
                 
                 if (index instanceof InMemoryVectorIndex memIndex) {
                     memIndex.setEmbeddingProvider(embeddingModel::embed);
@@ -373,6 +376,21 @@ public class VectorsCli implements Callable<Integer> {
             case "simple", "hash" -> EmbeddingConfig.defaults();
             default -> throw new IllegalArgumentException("Unknown provider: " + provider + 
                 ". Use: onnx, voyage");
+        };
+    }
+    
+    /**
+     * Resolve model name based on provider (use sensible defaults).
+     */
+    private static String resolveModel(String model, String provider) {
+        // If user explicitly specified a model, use it
+        if (model != null && !model.equals("jina-code")) {
+            return model;
+        }
+        // Otherwise use provider-appropriate default
+        return switch (provider.toLowerCase()) {
+            case "voyage", "voyage-ai", "voyageai" -> "voyage-code-3";
+            default -> "jina-code";
         };
     }
 }
