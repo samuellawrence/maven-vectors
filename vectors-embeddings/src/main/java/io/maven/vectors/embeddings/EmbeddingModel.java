@@ -63,6 +63,7 @@ public interface EmbeddingModel extends Closeable {
     static EmbeddingModel load(String modelId, EmbeddingConfig config) {
         return switch (config.backend()) {
             case ONNX -> new OnnxEmbeddingModel(modelId, config);
+            case VOYAGE -> new VoyageEmbeddingModel(modelId, config);
             case SIMPLE -> new SimpleEmbeddingModel(modelId, config);
         };
     }

@@ -23,7 +23,13 @@ public record EmbeddingConfig(
     boolean normalizeOutput,
     
     /** Whether to preprocess code (split camelCase, etc.) */
-    boolean preprocessCode
+    boolean preprocessCode,
+    
+    /** API key for cloud-based embedding providers (Voyage AI, OpenAI) */
+    String apiKey,
+    
+    /** Output dimensions (0 = use model default) */
+    int dimensions
 ) {
     
     public static EmbeddingConfig defaults() {
@@ -33,7 +39,9 @@ public record EmbeddingConfig(
             512,
             32,
             true,
-            false
+            false,
+            null,
+            0
         );
     }
     
@@ -44,20 +52,47 @@ public record EmbeddingConfig(
             512,
             32,
             true,
-            true  // Enable preprocessing for better code search
+            true,  // Enable preprocessing for better code search
+            null,
+            0
         );
     }
     
+    public static EmbeddingConfig voyage() {
+        return new EmbeddingConfig(
+            EmbeddingBackend.VOYAGE,
+            Paths.get(System.getProperty("user.home"), ".maven-vectors", "models"),
+            512,
+            128,   // Larger batch size for API
+            true,
+            true,  // Enable preprocessing
+            null,  // Will use VOYAGE_API_KEY env var
+            1024   // Default dimensions for voyage-code-3
+        );
+    }
+    
+    public static EmbeddingConfig voyage(String apiKey) {
+        return voyage().withApiKey(apiKey);
+    }
+    
     public EmbeddingConfig withBackend(EmbeddingBackend backend) {
-        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, preprocessCode);
+        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, preprocessCode, apiKey, dimensions);
     }
     
     public EmbeddingConfig withCacheDir(Path cacheDir) {
-        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, preprocessCode);
+        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, preprocessCode, apiKey, dimensions);
     }
     
     public EmbeddingConfig withPreprocessing(boolean enabled) {
-        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, enabled);
+        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, enabled, apiKey, dimensions);
+    }
+    
+    public EmbeddingConfig withApiKey(String apiKey) {
+        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, preprocessCode, apiKey, dimensions);
+    }
+    
+    public EmbeddingConfig withDimensions(int dimensions) {
+        return new EmbeddingConfig(backend, cacheDir, maxSequenceLength, batchSize, normalizeOutput, preprocessCode, apiKey, dimensions);
     }
 }
 
@@ -67,6 +102,9 @@ public record EmbeddingConfig(
 enum EmbeddingBackend {
     /** ONNX Runtime - local model execution */
     ONNX,
+    
+    /** Voyage AI API - best code embeddings (200M tokens free) */
+    VOYAGE,
     
     /** Simple hash-based embeddings (for testing/development) */
     SIMPLE

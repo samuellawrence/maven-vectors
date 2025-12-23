@@ -62,6 +62,12 @@ public class VectorsCli implements Callable<Integer> {
         @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "jina-code")
         private String model;
         
+        @Option(names = {"-p", "--provider"}, description = "Embedding provider: onnx, voyage", defaultValue = "onnx")
+        private String provider;
+        
+        @Option(names = {"--api-key"}, description = "API key for cloud providers (or set VOYAGE_API_KEY env var)")
+        private String apiKey;
+        
         @Option(names = {"--include-tests"}, description = "Include test files")
         private boolean includeTests;
         
@@ -69,6 +75,7 @@ public class VectorsCli implements Callable<Integer> {
         public Integer call() throws Exception {
             System.out.println("Indexing project: " + projectPath);
             System.out.println("Using model: " + model);
+            System.out.println("Provider: " + provider);
             
             // Parse source files
             JavaCodeChunker chunker = new JavaCodeChunker();
@@ -81,24 +88,23 @@ public class VectorsCli implements Callable<Integer> {
                 return 1;
             }
             
-            // Generate embeddings with ONNX backend
-            EmbeddingConfig config = EmbeddingConfig.onnx();
+            // Configure embedding provider
+            EmbeddingConfig config = createConfig(provider, apiKey);
             try (EmbeddingModel embeddingModel = EmbeddingModel.load(model, config)) {
                 
                 IndexConfig indexConfig = IndexConfig.forModel(model, embeddingModel.getDimensions());
                 VectorIndex index = VectorIndex.create(indexConfig);
                 
                 System.out.println("Generating embeddings...");
-                int progress = 0;
-                for (CodeChunk chunk : chunks) {
-                    float[] embedding = embeddingModel.embed(chunk.code());
-                    index.add(chunk, embedding);
-                    
-                    progress++;
-                    if (progress % 50 == 0) {
-                        System.out.printf("Progress: %d/%d%n", progress, chunks.size());
-                    }
+                
+                // Use batch embedding to minimize API calls (important for rate-limited APIs)
+                List<String> codes = chunks.stream().map(CodeChunk::code).toList();
+                List<float[]> embeddings = embeddingModel.embedBatch(codes);
+                
+                for (int i = 0; i < chunks.size(); i++) {
+                    index.add(chunks.get(i), embeddings.get(i));
                 }
+                System.out.printf("Embedded %d chunks%n", chunks.size());
                 
                 // Save index
                 Files.createDirectories(outputPath.getParent() != null ? outputPath.getParent() : Path.of("."));
@@ -135,6 +141,12 @@ public class VectorsCli implements Callable<Integer> {
         @Option(names = {"-m", "--model"}, description = "Embedding model", defaultValue = "jina-code")
         private String model;
         
+        @Option(names = {"-p", "--provider"}, description = "Embedding provider: onnx, voyage", defaultValue = "onnx")
+        private String provider;
+        
+        @Option(names = {"--api-key"}, description = "API key for cloud providers (or set VOYAGE_API_KEY env var)")
+        private String apiKey;
+        
         @Option(names = {"--show-code"}, description = "Show code snippets", defaultValue = "true")
         private boolean showCode;
         
@@ -144,7 +156,7 @@ public class VectorsCli implements Callable<Integer> {
             
             VectorIndex index = VectorIndex.load(indexPath);
             
-            EmbeddingConfig config = EmbeddingConfig.onnx();
+            EmbeddingConfig config = createConfig(provider, apiKey);
             try (EmbeddingModel embeddingModel = EmbeddingModel.load(model, config)) {
                 
                 if (index instanceof InMemoryVectorIndex memIndex) {
@@ -343,5 +355,24 @@ public class VectorsCli implements Callable<Integer> {
                 return 1;
             }
         }
+    }
+    
+    /**
+     * Create embedding config for the specified provider.
+     */
+    private static EmbeddingConfig createConfig(String provider, String apiKey) {
+        return switch (provider.toLowerCase()) {
+            case "voyage", "voyage-ai", "voyageai" -> {
+                EmbeddingConfig config = EmbeddingConfig.voyage();
+                if (apiKey != null && !apiKey.isBlank()) {
+                    yield config.withApiKey(apiKey);
+                }
+                yield config;
+            }
+            case "onnx", "local" -> EmbeddingConfig.onnx();
+            case "simple", "hash" -> EmbeddingConfig.defaults();
+            default -> throw new IllegalArgumentException("Unknown provider: " + provider + 
+                ". Use: onnx, voyage");
+        };
     }
 }
