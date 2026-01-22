@@ -182,7 +182,7 @@ public interface EmbeddingModel extends AutoCloseable {
 
 | Provider | Models | Dimensions | Use Case |
 |----------|--------|------------|----------|
-| **ONNX (default)** | jina-code, unixcoder, all-MiniLM | 768/384 | Local, offline, free |
+| **ONNX (default)** | jina-code, bge-small-en, bge-base-en, all-MiniLM, nomic-embed-text, unixcoder | 384-768 | Local, offline, free |
 | **Voyage AI** | voyage-code-3, voyage-3.5 | 1024 | Best quality, 200M tokens free |
 | **Simple** | hash-based | configurable | Testing only |
 
@@ -502,40 +502,42 @@ public class FormatVersion {
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| ONNX Embeddings | ✅ | Jina Code (default), UniXcoder, MiniLM |
+| ONNX Embeddings | ✅ | jina-code (default), bge-small-en, bge-base-en, all-MiniLM, nomic-embed-text |
 | Voyage AI Provider | ✅ | voyage-code-3, 200M tokens free |
 | Code Preprocessing | ✅ | CamelCase/snake_case splitting |
-| CLI Tool | ✅ | index, query, stats, duplicates, anomalies |
-| Maven Plugin | ✅ | generate, query goals |
-| Binary Format (.mvec) | ✅ | Simplified version |
-
-### In Progress 🟡
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| HNSW Index | 🟡 | Currently using brute-force search |
-| Javadoc Extraction | 🟡 | Would improve embedding quality |
-| searchByType() | 🟡 | Filter by CLASS/METHOD/FIELD |
+| CLI Tool | ✅ | index, query, stats, duplicates, anomalies, download |
+| Maven Plugin | ✅ | generate, query, stats goals |
+| Binary Format (.mvec) | ✅ | Brute-force format with MVEC magic |
+| HNSW Index | ✅ | O(log n) approximate search, MHNS magic |
+| Javadoc Extraction | ✅ | Prepends Javadoc to chunks for better search |
+| searchByType() | ✅ | Filter by CLASS/METHOD/FIELD/etc |
+| Duplicate Detection | ✅ | Find near-duplicate code patterns |
+| Anomaly Detection | ✅ | Find outlier code patterns |
 
 ### Planned 🔮
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| OpenAI Provider | Medium | Alternative cloud option |
 | Gradle Plugin | Medium | For Gradle-based projects |
 | Incremental Updates | High | Only re-embed changed files |
 | GPU Acceleration | Low | CUDA support for faster generation |
 | Cross-Language | Low | Kotlin, Scala, Groovy support |
+| IDE Plugins | Medium | IntelliJ, VS Code integration |
 
 ## Model Comparison
 
 Benchmark results on code search queries:
 
-| Model | Provider | Accuracy | Speed | Cost |
-|-------|----------|----------|-------|------|
-| **Jina Code** | ONNX | 77-83% | Fast | Free |
-| **Voyage Code 3** | API | 80-85% | ~500ms | 200M free |
-| UniXcoder | ONNX | 49-60% | Fast | Free |
-| all-MiniLM | ONNX | ~50% | Fastest | Free |
+| Model | Provider | Dimensions | Best For | Speed |
+|-------|----------|------------|----------|-------|
+| **jina-code** | ONNX | 768 | Code search (8K context) | Medium |
+| **bge-small-en** | ONNX | 384 | Fast general-purpose | Very Fast |
+| **bge-base-en** | ONNX | 768 | Higher quality general | Fast |
+| **all-MiniLM-L6-v2** | ONNX | 384 | Smallest, fastest | Very Fast |
+| **nomic-embed-text** | ONNX | 768 | Long context (8K) | Medium |
+| **voyage-code-3** | API | 1024 | Best accuracy | ~500ms |
 
-**Recommendation**: Use Jina Code (default) for most use cases. Use Voyage AI when maximum accuracy is critical.
+**Recommendation**:
+- **Code search**: Use `jina-code` (default) - trained on 30+ programming languages
+- **General purpose**: Use `bge-small-en` for speed or `bge-base-en` for quality
+- **Maximum accuracy**: Use Voyage AI when quality is critical
