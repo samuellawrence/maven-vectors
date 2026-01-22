@@ -5,7 +5,11 @@ import com.github.javaparser.ParseResult;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.*;
+import com.github.javaparser.ast.comments.JavadocComment;
+import com.github.javaparser.ast.nodeTypes.NodeWithJavadoc;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
+import com.github.javaparser.javadoc.Javadoc;
+import com.github.javaparser.javadoc.JavadocBlockTag;
 import io.maven.vectors.ChunkType;
 import io.maven.vectors.CodeChunk;
 import org.slf4j.Logger;
@@ -178,6 +182,14 @@ public class JavaCodeChunker {
                 
                 String code = extractLines(lineStart, lineEnd);
                 
+                // Prepend Javadoc if enabled
+                if (config.includeJavadoc()) {
+                    String javadoc = extractJavadoc(node);
+                    if (javadoc != null && !javadoc.isEmpty()) {
+                        code = javadoc + "\n" + code;
+                    }
+                }
+                
                 if (code.length() >= config.minChunkSize()) {
                     CodeChunk chunk = CodeChunk.ofMethod(
                         signature, 
@@ -240,6 +252,14 @@ public class JavaCodeChunker {
             int lineStart = node.getBegin().map(p -> p.line).orElse(1);
             int lineEnd = node.getEnd().map(p -> p.line).orElse(lineStart);
             String code = extractLines(lineStart, lineEnd);
+            
+            // Prepend Javadoc if enabled
+            if (config.includeJavadoc()) {
+                String javadoc = extractJavadoc(node);
+                if (javadoc != null && !javadoc.isEmpty()) {
+                    code = javadoc + "\n" + code;
+                }
+            }
             
             if (code.length() < config.minChunkSize()) {
                 return;
@@ -315,6 +335,62 @@ public class JavaCodeChunker {
             }
             return code.substring(0, config.maxChunkSize() - 3) + "...";
         }
+        
+        /**
+         * Extracts and formats Javadoc from a node.
+         * Returns a clean text representation suitable for embedding.
+         */
+        private String extractJavadoc(BodyDeclaration<?> node) {
+            if (node instanceof NodeWithJavadoc<?> nodeWithJavadoc) {
+                return nodeWithJavadoc.getJavadoc().map(this::formatJavadoc).orElse(null);
+            }
+            return null;
+        }
+        
+        /**
+         * Formats Javadoc into plain text for embedding.
+         * Includes description and relevant tags (@param, @return, @throws).
+         */
+        private String formatJavadoc(Javadoc javadoc) {
+            StringBuilder sb = new StringBuilder();
+            
+            // Main description
+            String description = javadoc.getDescription().toText().trim();
+            if (!description.isEmpty()) {
+                sb.append(description);
+            }
+            
+            // Process block tags
+            for (JavadocBlockTag tag : javadoc.getBlockTags()) {
+                String tagName = tag.getTagName();
+                String content = tag.getContent().toText().trim();
+                
+                if (content.isEmpty()) continue;
+                
+                switch (tagName) {
+                    case "param" -> {
+                        // Format: @param name description
+                        tag.getName().ifPresent(name -> {
+                            if (!sb.isEmpty()) sb.append(" ");
+                            sb.append("Parameter ").append(name).append(": ").append(content);
+                        });
+                    }
+                    case "return" -> {
+                        if (!sb.isEmpty()) sb.append(" ");
+                        sb.append("Returns: ").append(content);
+                    }
+                    case "throws", "exception" -> {
+                        tag.getName().ifPresent(name -> {
+                            if (!sb.isEmpty()) sb.append(" ");
+                            sb.append("Throws ").append(name).append(": ").append(content);
+                        });
+                    }
+                    // Skip @see, @since, @author, etc. - not useful for search
+                }
+            }
+            
+            return sb.toString().trim();
+        }
     }
     
     /**
@@ -325,6 +401,7 @@ public class JavaCodeChunker {
         boolean includeMethods,
         boolean includeConstructors,
         boolean includeFields,
+        boolean includeJavadoc,
         int minChunkSize,
         int maxChunkSize,
         List<String> excludePatterns
@@ -335,8 +412,19 @@ public class JavaCodeChunker {
                 true,   // includeMethods
                 true,   // includeConstructors
                 false,  // includeFields
+                true,   // includeJavadoc - prepend Javadoc to improve search
                 50,     // minChunkSize
                 3000,   // maxChunkSize
+                List.of("test", "generated", "target")
+            );
+        }
+        
+        /**
+         * Creates config without Javadoc extraction (for backward compatibility).
+         */
+        public static ChunkerConfig withoutJavadoc() {
+            return new ChunkerConfig(
+                true, true, true, false, false, 50, 3000,
                 List.of("test", "generated", "target")
             );
         }

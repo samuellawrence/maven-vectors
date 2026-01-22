@@ -28,6 +28,8 @@ public class ModelDownloader {
      * Known model configurations.
      */
     private static final Map<String, ModelInfo> KNOWN_MODELS = Map.ofEntries(
+        // ==================== General Purpose Models ====================
+
         // General purpose sentence embedding (smaller, faster)
         Map.entry("all-MiniLM-L6-v2", new ModelInfo(
             "Xenova/all-MiniLM-L6-v2",
@@ -35,6 +37,33 @@ public class ModelDownloader {
             "tokenizer.json",
             384
         )),
+
+        // BGE Small - excellent quality/speed tradeoff (MTEB top performer)
+        Map.entry("bge-small-en", new ModelInfo(
+            "Xenova/bge-small-en-v1.5",
+            "onnx/model.onnx",
+            "tokenizer.json",
+            384
+        )),
+
+        // BGE Base - higher quality, larger model
+        Map.entry("bge-base-en", new ModelInfo(
+            "Xenova/bge-base-en-v1.5",
+            "onnx/model.onnx",
+            "tokenizer.json",
+            768
+        )),
+
+        // Nomic Embed Text - good general purpose with long context (8K)
+        Map.entry("nomic-embed-text", new ModelInfo(
+            "Xenova/nomic-embed-text-v1",
+            "onnx/model.onnx",
+            "tokenizer.json",
+            768
+        )),
+
+        // ==================== Code-Specific Models ====================
+
         // Jina Code - best for code search (8K context, 30+ languages)
         Map.entry("jina-code", new ModelInfo(
             "maven-vectors/jina-code-onnx",
@@ -49,7 +78,8 @@ public class ModelDownloader {
             "tokenizer.json",
             768
         )),
-        // UniXcoder - alternative code model
+
+        // UniXcoder - Microsoft's code understanding model
         Map.entry("unixcoder", new ModelInfo(
             "maven-vectors/unixcoder-base-onnx",
             "model.onnx",

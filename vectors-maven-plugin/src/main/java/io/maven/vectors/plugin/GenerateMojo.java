@@ -65,7 +65,13 @@ public class GenerateMojo extends AbstractMojo {
      */
     @Parameter(property = "vectors.include.fields", defaultValue = "false")
     private boolean includeFields;
-    
+
+    /**
+     * Whether to include Javadoc in chunks for better search.
+     */
+    @Parameter(property = "vectors.include.javadoc", defaultValue = "true")
+    private boolean includeJavadoc;
+
     /**
      * Output directory for generated vectors.
      */
@@ -108,6 +114,7 @@ public class GenerateMojo extends AbstractMojo {
                 includeMethods,
                 includeConstructors,
                 includeFields,
+                includeJavadoc,
                 50,     // minChunkSize
                 3000,   // maxChunkSize
                 List.of("test", "generated")

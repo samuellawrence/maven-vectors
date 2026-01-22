@@ -52,9 +52,11 @@ mvn vectors:query "how does Spring handle dependency injection"
 - **📦 Artifact Distribution** — Publish to Maven Central, Nexus, or Artifactory
 - **🔗 Transitive Resolution** — Automatically merge vectors from all dependencies
 - **🔍 Semantic Search** — Find code by meaning, not just keywords
-- **🏠 Fully Offline** — No external API calls after vectors are generated
+- **🏠 Fully Offline** — No external API calls with ONNX models
 - **☕ Pure Java** — Query vectors with zero Python dependencies
-- **🎯 Java-Optimized** — Uses code-specific embedding models (UniXcoder, CodeT5)
+- **🎯 Code-Optimized** — Uses code-specific embedding models (Jina Code, UniXcoder)
+- **⚡ HNSW Index** — O(log n) approximate search for large codebases
+- **🔎 Code Analysis** — Find duplicates and anomalies in your codebase
 
 ---
 
@@ -87,10 +89,10 @@ mvn vectors:generate
 
 ```bash
 # Search across your project + all dependencies
-mvn vectors:query "exception handling pattern"
+mvn vectors:query -Dvectors.query="exception handling pattern"
 
 # Or use the CLI
-vectors-cli query ./my-project "singleton pattern"
+java -jar vectors-cli.jar query index.mvec "singleton pattern" -p onnx -m jina-code
 ```
 
 ### 4. Publish Vectors (Optional)
@@ -290,27 +292,47 @@ spring.merge(compatible); // ✅ Works
 
 Maven Vectors supports multiple embedding models:
 
-| Model | Size | Dimensions | Java Quality | Speed |
-|-------|------|------------|--------------|-------|
-| `microsoft/unixcoder-base` | 125M | 768 | ⭐⭐⭐⭐⭐ | Fast |
-| `Salesforce/codet5-base` | 220M | 768 | ⭐⭐⭐⭐ | Medium |
-| `microsoft/graphcodebert-base` | 125M | 768 | ⭐⭐⭐⭐ | Fast |
-| `sentence-transformers/all-MiniLM-L6-v2` | 22M | 384 | ⭐⭐⭐ | Very Fast |
+### Code-Specific Models (Recommended)
 
-### Local Model Execution
+| Model | Dimensions | Description | Speed |
+|-------|------------|-------------|-------|
+| `jina-code` | 768 | Best for code search, 8K context, 30+ languages | Medium |
+| `unixcoder` | 768 | Microsoft's code understanding model | Fast |
+
+### General-Purpose Models
+
+| Model | Dimensions | Description | Speed |
+|-------|------------|-------------|-------|
+| `bge-small-en` | 384 | Excellent quality/speed tradeoff (MTEB top performer) | Very Fast |
+| `bge-base-en` | 768 | Higher quality, larger model | Fast |
+| `all-MiniLM-L6-v2` | 384 | Smallest and fastest | Very Fast |
+| `nomic-embed-text` | 768 | Long context support (8K tokens) | Medium |
+
+### Model Providers
 
 Models run locally via ONNX Runtime — **no external API calls required**:
 
 ```xml
 <configuration>
-    <!-- Use local ONNX model -->
-    <model>microsoft/unixcoder-base</model>
-    <modelBackend>ONNX</modelBackend>
-    
-    <!-- Or use external API (optional) -->
-    <modelBackend>OPENAI</modelBackend>
-    <apiKey>${env.OPENAI_API_KEY}</apiKey>
+    <!-- Use local ONNX model (default, recommended) -->
+    <model>jina-code</model>
+
+    <!-- Or use Voyage AI API for cloud embeddings -->
+    <!-- Set VOYAGE_API_KEY environment variable -->
 </configuration>
+```
+
+### CLI Model Usage
+
+```bash
+# Download a model
+vectors download -m jina-code
+
+# Index with specific model
+vectors index src/main/java -o index.mvec -p onnx -m jina-code
+
+# Use HNSW for large codebases (>10K chunks)
+vectors index src/main/java -o index.mvec -p onnx -m jina-code --hnsw
 ```
 
 ---
@@ -360,20 +382,22 @@ ContentRetriever retriever = EmbeddingStoreContentRetriever.builder()
 
 ### v1.0 (MVP)
 - [x] Core vector format specification
-- [ ] Maven plugin (generate, query)
-- [ ] UniXcoder embedding support
-- [ ] Binary vector index format
-- [ ] Basic CLI tool
+- [x] Maven plugin (generate, query, stats)
+- [x] ONNX embedding support (jina-code, bge, MiniLM)
+- [x] Binary vector index format (.mvec)
+- [x] CLI tool (index, query, stats, anomalies, duplicates)
+- [x] HNSW index for fast approximate search
 
 ### v1.1
 - [ ] Transitive dependency resolution
-- [ ] Vector merging
-- [ ] Javadoc embedding
-- [ ] Anomaly detection
+- [x] Vector merging
+- [x] Javadoc embedding
+- [x] Anomaly detection
+- [x] Duplicate detection
 
 ### v1.2
 - [ ] Gradle plugin
-- [ ] Multiple model support
+- [x] Multiple model support (6+ models)
 - [ ] Incremental generation
 - [ ] IDE plugin (IntelliJ)
 
@@ -448,10 +472,12 @@ Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-- [UniXcoder](https://github.com/microsoft/CodeBERT) — Microsoft's code embedding model
+- [Jina AI](https://jina.ai/) — Jina Code embedding model
 - [ONNX Runtime](https://onnxruntime.ai/) — Local model execution
-- [JVector](https://github.com/jbellis/jvector) — High-performance vector search
+- [hnswlib](https://github.com/jelmerk/hnswlib) — HNSW vector search
 - [JavaParser](https://javaparser.org/) — Java AST parsing
+- [DJL](https://djl.ai/) — HuggingFace tokenizer support
+- [PicoCLI](https://picocli.info/) — CLI framework
 
 ---
 

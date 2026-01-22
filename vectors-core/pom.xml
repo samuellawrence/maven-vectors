@@ -23,10 +23,10 @@
             <artifactId>javaparser-core</artifactId>
         </dependency>
 
-        <!-- Vector search -->
+        <!-- HNSW Vector search -->
         <dependency>
-            <groupId>io.github.jbellis</groupId>
-            <artifactId>jvector</artifactId>
+            <groupId>com.github.jelmerk</groupId>
+            <artifactId>hnswlib-core</artifactId>
         </dependency>
 
         <!-- JSON processing -->

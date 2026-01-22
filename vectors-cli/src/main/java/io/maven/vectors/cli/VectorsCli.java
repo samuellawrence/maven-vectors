@@ -71,6 +71,9 @@ public class VectorsCli implements Callable<Integer> {
         @Option(names = {"--include-tests"}, description = "Include test files")
         private boolean includeTests;
         
+        @Option(names = {"--hnsw"}, description = "Use HNSW index for fast approximate search (recommended for >10K chunks)")
+        private boolean useHnsw;
+        
         @Override
         public Integer call() throws Exception {
             String resolvedModel = resolveModel(model, provider);
@@ -94,7 +97,17 @@ public class VectorsCli implements Callable<Integer> {
             try (EmbeddingModel embeddingModel = EmbeddingModel.load(resolvedModel, config)) {
                 
                 IndexConfig indexConfig = IndexConfig.forModel(resolvedModel, embeddingModel.getDimensions());
-                VectorIndex index = VectorIndex.create(indexConfig);
+                
+                // Create index (HNSW for large datasets, brute-force for small)
+                VectorIndex index;
+                if (useHnsw) {
+                    int maxItems = Math.max(chunks.size() * 2, 10_000);
+                    index = VectorIndex.createHnsw(indexConfig, maxItems);
+                    System.out.println("Using HNSW index (fast approximate search)");
+                } else {
+                    index = VectorIndex.create(indexConfig);
+                    System.out.println("Using brute-force index (exact search)");
+                }
                 
                 System.out.println("Generating embeddings...");
                 
@@ -164,6 +177,8 @@ public class VectorsCli implements Callable<Integer> {
                 
                 if (index instanceof InMemoryVectorIndex memIndex) {
                     memIndex.setEmbeddingProvider(embeddingModel::embed);
+                } else if (index instanceof HnswVectorIndex hnswIndex) {
+                    hnswIndex.setEmbeddingProvider(embeddingModel::embed);
                 }
                 
                 List<SearchResult> results = index.search(query, topK);

@@ -1,8 +1,10 @@
 package io.maven.vectors;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -36,6 +38,7 @@ public interface VectorIndex extends AutoCloseable {
     
     /**
      * Creates a new empty index with default configuration.
+     * Uses brute-force search (suitable for small indexes).
      */
     static VectorIndex create() {
         return create(IndexConfig.defaultConfig());
@@ -43,31 +46,81 @@ public interface VectorIndex extends AutoCloseable {
     
     /**
      * Creates a new empty index with the specified configuration.
+     * Uses brute-force search (suitable for small indexes).
      */
     static VectorIndex create(IndexConfig config) {
         return new InMemoryVectorIndex(config);
     }
     
     /**
-     * Loads an index from a file.
+     * Creates a new HNSW-based index for fast approximate search.
+     * Recommended for indexes with more than 10,000 vectors.
      * 
-     * @param path Path to the .mvec file
+     * @param config Index configuration
+     * @param maxItems Maximum number of items (pre-allocates graph structure)
+     */
+    static VectorIndex createHnsw(IndexConfig config, int maxItems) {
+        return new HnswVectorIndex(config, maxItems);
+    }
+    
+    /**
+     * Creates a new HNSW-based index with default capacity (100,000 items).
+     */
+    static VectorIndex createHnsw(IndexConfig config) {
+        return new HnswVectorIndex(config);
+    }
+    
+    /**
+     * Loads an index from a file, auto-detecting the format.
+     * Supports both brute-force (.mvec) and HNSW formats.
+     * 
+     * @param path Path to the index file
      * @return Loaded index
      * @throws IOException if the file cannot be read
      */
     static VectorIndex load(Path path) throws IOException {
-        return InMemoryVectorIndex.loadFrom(path);
+        // Peek at magic bytes to determine format
+        try (InputStream is = Files.newInputStream(path)) {
+            byte[] magic = new byte[4];
+            is.read(magic);
+            String magicStr = new String(magic);
+            
+            // Re-open and load with appropriate loader
+            if ("MHNS".equals(magicStr)) {
+                return HnswVectorIndex.loadFrom(path);
+            } else if ("MVEC".equals(magicStr)) {
+                return InMemoryVectorIndex.loadFrom(path);
+            } else {
+                throw new IOException("Unknown index format: " + magicStr);
+            }
+        }
     }
     
     /**
      * Loads an index from an input stream.
+     * Note: Stream must be buffered; this method reads magic bytes first.
      * 
-     * @param is Input stream containing .mvec data
+     * @param is Input stream containing index data
      * @return Loaded index
      * @throws IOException if the stream cannot be read
      */
     static VectorIndex load(InputStream is) throws IOException {
-        return InMemoryVectorIndex.loadFrom(is);
+        // Wrap in BufferedInputStream to support mark/reset
+        BufferedInputStream bis = new BufferedInputStream(is);
+        bis.mark(8);
+        
+        byte[] magic = new byte[4];
+        bis.read(magic);
+        bis.reset();
+        
+        String magicStr = new String(magic);
+        if ("MHNS".equals(magicStr)) {
+            return HnswVectorIndex.loadFrom(bis);
+        } else if ("MVEC".equals(magicStr)) {
+            return InMemoryVectorIndex.loadFrom(bis);
+        } else {
+            throw new IOException("Unknown index format: " + magicStr);
+        }
     }
     
     // ==================== Modification ====================

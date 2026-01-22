@@ -33,12 +33,24 @@ Maven Vectors is designed as a modular system with clear separation of concerns:
 │  └───────────┬───────────────────┬───────────────────┬─────────────┘   │
 │              │                   │                   │                  │
 │  ┌───────────▼───────┐ ┌────────▼────────┐ ┌───────▼────────┐         │
-│  │  OnnxEmbedding    │ │ OpenAIEmbedding │ │ LocalEmbedding │         │
-│  │  (UniXcoder,      │ │ (API-based)     │ │ (Custom)       │         │
-│  │   CodeT5, etc.)   │ │                 │ │                │         │
+│  │  OnnxEmbedding    │ │ VoyageEmbedding │ │ SimpleEmbedding│         │
+│  │  ✅ jina-code     │ │ ✅ voyage-code-3│ │ (testing)      │         │
+│  │  ✅ unixcoder     │ │ ✅ voyage-3.5   │ │                │         │
+│  │  ✅ all-MiniLM    │ │ (200M free)     │ │                │         │
 │  └───────────────────┘ └─────────────────┘ └────────────────┘         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Code Preprocessing
+
+The `CodePreprocessor` improves embedding quality by splitting identifiers:
+
+| Input | Output |
+|-------|--------|
+| `cosineSimilarity` | `cosine Similarity` |
+| `parse_file` | `parse file` |
+| `XMLParser` | `XML Parser` |
+| `log2` | `log 2` |
 
 ## Module Breakdown
 
@@ -162,29 +174,64 @@ public interface EmbeddingModel extends AutoCloseable {
     long getModelHash();
     
     // Factory
-    static EmbeddingModel load(String modelId, ModelConfig config);
+    static EmbeddingModel load(String modelId, EmbeddingConfig config);
 }
+```
 
-// ONNX implementation (default)
+#### Available Providers
+
+| Provider | Models | Dimensions | Use Case |
+|----------|--------|------------|----------|
+| **ONNX (default)** | jina-code, unixcoder, all-MiniLM | 768/384 | Local, offline, free |
+| **Voyage AI** | voyage-code-3, voyage-3.5 | 1024 | Best quality, 200M tokens free |
+| **Simple** | hash-based | configurable | Testing only |
+
+#### ONNX Implementation (default)
+
+```java
 public class OnnxEmbeddingModel implements EmbeddingModel {
     private final OrtSession session;
-    private final Tokenizer tokenizer;
+    private final HuggingFaceTokenizer tokenizer;
+    private final CodePreprocessor preprocessor;
     
-    public OnnxEmbeddingModel(String modelId) {
-        // Load ONNX model from HuggingFace or local cache
-        this.session = loadModel(modelId);
-        this.tokenizer = loadTokenizer(modelId);
+    public OnnxEmbeddingModel(String modelId, EmbeddingConfig config) {
+        // Auto-download from HuggingFace or use local cache
+        Path modelDir = ModelDownloader.download(modelId);
+        this.session = loadModel(modelDir);
+        this.tokenizer = loadTokenizer(modelDir);
+        this.preprocessor = config.preprocessCode() ? CodePreprocessor.defaults() : null;
     }
     
     @Override
     public float[] embed(String code) {
-        long[] tokens = tokenizer.encode(code);
-        OnnxTensor input = OnnxTensor.createTensor(env, tokens);
-        OrtSession.Result result = session.run(Map.of("input_ids", input));
-        return extractEmbedding(result);
+        String processed = preprocessor != null ? preprocessor.preprocess(code) : code;
+        Encoding encoding = tokenizer.encode(processed);
+        // Run ONNX inference...
+        return extractMeanPooledEmbedding(result);
     }
 }
 ```
+
+#### Voyage AI Implementation (cloud)
+
+```java
+public class VoyageEmbeddingModel implements EmbeddingModel {
+    private static final String API_URL = "https://api.voyageai.com/v1/embeddings";
+    
+    public VoyageEmbeddingModel(String modelId, EmbeddingConfig config) {
+        this.apiKey = resolveApiKey(config); // env var or config
+        this.modelId = modelId; // voyage-code-3, voyage-3.5, etc.
+    }
+    
+    @Override
+    public List<float[]> embedBatch(List<String> codes) {
+        // Batch up to 128 texts per request
+        // Uses input_type="document" for indexing, "query" for search
+        return callVoyageAPI(codes, "document");
+    }
+}
+```
+
 
 ### 3. vectors-maven-plugin
 
@@ -197,8 +244,11 @@ public class GenerateMojo extends AbstractMojo {
     @Parameter(defaultValue = "${project}", readonly = true)
     private MavenProject project;
     
-    @Parameter(property = "vectors.model", defaultValue = "microsoft/unixcoder-base")
+    @Parameter(property = "vectors.model", defaultValue = "jina-code")
     private String model;
+    
+    @Parameter(property = "vectors.provider", defaultValue = "onnx")
+    private String provider;
     
     @Parameter(property = "vectors.include.classes", defaultValue = "true")
     private boolean includeClasses;
@@ -440,18 +490,52 @@ public class FormatVersion {
 
 ## Security Considerations
 
-1. **No External API Calls** — Default configuration runs entirely offline
-2. **Code Never Leaves Machine** — Embeddings computed locally
-3. **Artifact Signing** — Vectors can be signed like any Maven artifact
-4. **Checksum Verification** — SHA-256 checksums for integrity
+1. **Offline by Default** — ONNX provider runs entirely offline (jina-code, unixcoder)
+2. **Code Never Leaves Machine** — Local embeddings computed on your hardware
+3. **Optional Cloud** — Voyage AI provider available when higher accuracy needed
+4. **Artifact Signing** — Vectors can be signed like any Maven artifact
+5. **Checksum Verification** — SHA-256 checksums for integrity
 
-## Future Extensions
+## Implementation Status
 
-### Planned Features
+### Completed ✅
 
-1. **Incremental Updates** — Only re-embed changed files
-2. **GPU Acceleration** — CUDA support for faster generation
-3. **Compression** — Product quantization for smaller artifacts
-4. **Streaming** — Process large codebases without loading all into memory
-5. **Cross-Language** — Kotlin, Scala, Groovy support
-6. **Vector Diffing** — Compare embeddings between versions
+| Feature | Status | Notes |
+|---------|--------|-------|
+| ONNX Embeddings | ✅ | Jina Code (default), UniXcoder, MiniLM |
+| Voyage AI Provider | ✅ | voyage-code-3, 200M tokens free |
+| Code Preprocessing | ✅ | CamelCase/snake_case splitting |
+| CLI Tool | ✅ | index, query, stats, duplicates, anomalies |
+| Maven Plugin | ✅ | generate, query goals |
+| Binary Format (.mvec) | ✅ | Simplified version |
+
+### In Progress 🟡
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| HNSW Index | 🟡 | Currently using brute-force search |
+| Javadoc Extraction | 🟡 | Would improve embedding quality |
+| searchByType() | 🟡 | Filter by CLASS/METHOD/FIELD |
+
+### Planned 🔮
+
+| Feature | Priority | Notes |
+|---------|----------|-------|
+| OpenAI Provider | Medium | Alternative cloud option |
+| Gradle Plugin | Medium | For Gradle-based projects |
+| Incremental Updates | High | Only re-embed changed files |
+| GPU Acceleration | Low | CUDA support for faster generation |
+| Cross-Language | Low | Kotlin, Scala, Groovy support |
+
+## Model Comparison
+
+Benchmark results on code search queries:
+
+| Model | Provider | Accuracy | Speed | Cost |
+|-------|----------|----------|-------|------|
+| **Jina Code** | ONNX | 77-83% | Fast | Free |
+| **Voyage Code 3** | API | 80-85% | ~500ms | 200M free |
+| UniXcoder | ONNX | 49-60% | Fast | Free |
+| all-MiniLM | ONNX | ~50% | Fastest | Free |
+
+**Recommendation**: Use Jina Code (default) for most use cases. Use Voyage AI when maximum accuracy is critical.

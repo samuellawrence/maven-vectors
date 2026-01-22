@@ -48,9 +48,9 @@
         
         <!-- Dependency versions -->
         <javaparser.version>3.25.8</javaparser.version>
-        <onnxruntime.version>1.16.3</onnxruntime.version>
-        <djl.version>0.25.0</djl.version>
-        <jvector.version>2.0.0</jvector.version>
+        <onnxruntime.version>1.20.0</onnxruntime.version>
+        <djl.version>0.31.0</djl.version>
+        <hnswlib.version>1.2.1</hnswlib.version>
         <jackson.version>2.16.1</jackson.version>
         <slf4j.version>2.0.11</slf4j.version>
         <junit.version>5.10.1</junit.version>
@@ -93,11 +93,11 @@
                 <version>${djl.version}</version>
             </dependency>
 
-            <!-- Vector search -->
+            <!-- HNSW Vector search -->
             <dependency>
-                <groupId>io.github.jbellis</groupId>
-                <artifactId>jvector</artifactId>
-                <version>${jvector.version}</version>
+                <groupId>com.github.jelmerk</groupId>
+                <artifactId>hnswlib-core</artifactId>
+                <version>${hnswlib.version}</version>
             </dependency>
 
             <!-- JSON processing -->
