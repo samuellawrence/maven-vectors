@@ -389,7 +389,7 @@ ContentRetriever retriever = EmbeddingStoreContentRetriever.builder()
 - [x] HNSW index for fast approximate search
 
 ### v1.1
-- [ ] Transitive dependency resolution
+- [x] Transitive dependency resolution
 - [x] Vector merging
 - [x] Javadoc embedding
 - [x] Anomaly detection

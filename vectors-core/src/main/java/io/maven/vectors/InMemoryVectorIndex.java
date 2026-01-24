@@ -113,12 +113,13 @@ public class InMemoryVectorIndex implements VectorIndex {
         if (chunks.isEmpty()) {
             return List.of();
         }
-        
+
         // Compute similarities
         List<SearchResult> results = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
+            CodeChunk chunk = chunks.get(i);
             float similarity = cosineSimilarity(queryVector, vectors.get(i));
-            results.add(SearchResult.of(chunks.get(i), similarity));
+            results.add(SearchResult.of(chunk, similarity, chunk.getArtifact()));
         }
         
         // Sort and return top-K (compareTo sorts by similarity descending)
@@ -139,9 +140,10 @@ public class InMemoryVectorIndex implements VectorIndex {
         // Filter by type, then search
         List<SearchResult> results = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
-            if (chunks.get(i).type() == type) {
+            CodeChunk chunk = chunks.get(i);
+            if (chunk.type() == type) {
                 float similarity = cosineSimilarity(queryVector, vectors.get(i));
-                results.add(SearchResult.of(chunks.get(i), similarity));
+                results.add(SearchResult.of(chunk, similarity, chunk.getArtifact()));
             }
         }
         
@@ -327,6 +329,17 @@ public class InMemoryVectorIndex implements VectorIndex {
         return index;
     }
     
+    // ==================== Entries ====================
+
+    @Override
+    public List<VectorEntry> entries() {
+        List<VectorEntry> result = new ArrayList<>(chunks.size());
+        for (int i = 0; i < chunks.size(); i++) {
+            result.add(new VectorEntry(chunks.get(i), vectors.get(i).clone()));
+        }
+        return result;
+    }
+
     // ==================== Metadata ====================
     
     @Override

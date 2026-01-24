@@ -228,6 +228,16 @@ public interface VectorIndex extends AutoCloseable {
      */
     byte[] toBytes() throws IOException;
     
+    // ==================== Entries ====================
+
+    /**
+     * Returns all entries (chunk + embedding pairs) in this index.
+     * Useful for cross-format merging and reindexing.
+     *
+     * @return List of all vector entries
+     */
+    List<VectorEntry> entries();
+
     // ==================== Metadata ====================
     
     /**

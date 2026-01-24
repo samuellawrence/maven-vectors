@@ -1,5 +1,8 @@
 package io.maven.vectors;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -86,5 +89,24 @@ public record CodeChunk(
             return parentClass + "." + name;
         }
         return name;
+    }
+
+    /**
+     * Returns a new CodeChunk with artifact provenance metadata added.
+     *
+     * @param artifactCoords Maven coordinates (groupId:artifactId:version)
+     */
+    public CodeChunk withArtifact(String artifactCoords) {
+        Map<String, String> newMeta = new HashMap<>(metadata);
+        newMeta.put("maven.artifact", artifactCoords);
+        return new CodeChunk(id, name, type, code, file, lineStart, lineEnd, parentClass, newMeta);
+    }
+
+    /**
+     * Returns the source artifact coordinates, or null if not from a dependency.
+     */
+    @JsonIgnore
+    public String getArtifact() {
+        return metadata.get("maven.artifact");
     }
 }

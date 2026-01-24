@@ -25,6 +25,7 @@ import java.util.concurrent.Callable;
     subcommands = {
         VectorsCli.IndexCommand.class,
         VectorsCli.QueryCommand.class,
+        VectorsCli.MergeCommand.class,
         VectorsCli.StatsCommand.class,
         VectorsCli.AnomaliesCommand.class,
         VectorsCli.DuplicatesCommand.class,
@@ -199,16 +200,20 @@ public class VectorsCli implements Callable<Integer> {
         
         private void printResult(int rank, SearchResult result, boolean showCode) {
             CodeChunk chunk = result.chunk();
-            
+
             System.out.println();
             System.out.printf("#%d [%.1f%%] %s %s%n",
                 rank,
                 result.similarity() * 100,
                 chunk.type(),
                 chunk.qualifiedName());
-            
+
             System.out.println("    File: " + chunk.file() + ":" + chunk.lineStart());
-            
+
+            if (result.artifactId() != null) {
+                System.out.println("    Artifact: " + result.artifactId());
+            }
+
             if (showCode) {
                 System.out.println("    " + "-".repeat(50));
                 String preview = chunk.truncatedCode(200);
@@ -219,6 +224,73 @@ public class VectorsCli implements Callable<Integer> {
         }
     }
     
+    /**
+     * Merge multiple vector index files into one.
+     */
+    @Command(
+        name = "merge",
+        description = "Merge multiple vector index files into a unified index"
+    )
+    static class MergeCommand implements Callable<Integer> {
+
+        @Parameters(description = "Input .mvec files to merge")
+        private List<Path> inputFiles;
+
+        @Option(names = {"-o", "--output"}, description = "Output file", defaultValue = "merged-vectors.mvec")
+        private Path outputPath;
+
+        @Option(names = {"--format"}, description = "Output format: inmemory, hnsw", defaultValue = "inmemory")
+        private String format;
+
+        @Override
+        public Integer call() throws Exception {
+            if (inputFiles == null || inputFiles.isEmpty()) {
+                System.err.println("No input files specified");
+                return 1;
+            }
+
+            System.out.println("Merging " + inputFiles.size() + " index files...");
+
+            // Load first index to determine model/dimensions
+            VectorIndex first = VectorIndex.load(inputFiles.get(0));
+            IndexMerger.OutputFormat outFormat = "hnsw".equalsIgnoreCase(format)
+                ? IndexMerger.OutputFormat.HNSW : IndexMerger.OutputFormat.IN_MEMORY;
+
+            IndexMerger merger = new IndexMerger(
+                first.getModelId(), first.getDimensions(), outFormat, 100_000
+            );
+            merger.addIndex(first, inputFiles.get(0).getFileName().toString());
+            System.out.println("  Loaded: " + inputFiles.get(0) + " (" + first.size() + " chunks)");
+
+            for (int i = 1; i < inputFiles.size(); i++) {
+                VectorIndex idx = VectorIndex.load(inputFiles.get(i));
+                boolean added = merger.addIndex(idx, inputFiles.get(i).getFileName().toString());
+                if (added) {
+                    System.out.println("  Loaded: " + inputFiles.get(i) + " (" + idx.size() + " chunks)");
+                } else {
+                    System.out.println("  Skipped (incompatible): " + inputFiles.get(i));
+                }
+                idx.close();
+            }
+
+            VectorIndex merged = merger.build();
+            Files.createDirectories(outputPath.getParent() != null ? outputPath.getParent() : Path.of("."));
+            merged.save(outputPath);
+
+            System.out.println();
+            System.out.printf("Merged %d index(es) -> %s (%d chunks)%n",
+                inputFiles.size(), outputPath, merged.size());
+
+            if (!merger.getSkippedArtifacts().isEmpty()) {
+                System.out.println("Skipped incompatible: " + merger.getSkippedArtifacts());
+            }
+
+            merged.close();
+            first.close();
+            return 0;
+        }
+    }
+
     /**
      * Show index statistics.
      */

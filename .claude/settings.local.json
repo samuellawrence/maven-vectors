@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn dependency:resolve:*)",
+      "Bash(mvn compile:*)",
+      "Bash(mvn dependency:tree:*)",
+      "Bash(jar tf:*)",
+      "Bash(mvn clean compile:*)",
+      "Bash(java -jar:*)",
+      "Bash(mvn package:*)",
+      "WebSearch",
+      "Bash(mvn clean package:*)",
+      "Bash(mvn test:*)",
+      "Bash(mvn clean install:*)"
+    ]
+  }
+}

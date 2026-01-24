@@ -60,6 +60,12 @@ public class QueryMojo extends AbstractMojo {
     private File indexDirectory;
     
     /**
+     * Whether to search the resolved (merged dependency) index.
+     */
+    @Parameter(property = "vectors.resolved", defaultValue = "false")
+    private boolean useResolved;
+
+    /**
      * Whether to show code snippets in results.
      */
     @Parameter(property = "vectors.showCode", defaultValue = "true")
@@ -81,14 +87,16 @@ public class QueryMojo extends AbstractMojo {
             
             // Load index
             VectorIndex index = VectorIndex.load(indexPath);
-            
+
             // Load embedding model for query embedding
             EmbeddingConfig embeddingConfig = EmbeddingConfig.defaults();
             try (EmbeddingModel embeddingModel = EmbeddingModel.load(model, embeddingConfig)) {
-                
+
                 // Set up embedding provider for text queries
                 if (index instanceof InMemoryVectorIndex memIndex) {
                     memIndex.setEmbeddingProvider(embeddingModel::embed);
+                } else if (index instanceof HnswVectorIndex hnswIndex) {
+                    hnswIndex.setEmbeddingProvider(embeddingModel::embed);
                 }
                 
                 // Execute search
@@ -122,11 +130,15 @@ public class QueryMojo extends AbstractMojo {
         if (!indexDirectory.exists()) {
             return null;
         }
-        
+
         // Look for .mvec files
         try (var files = Files.list(indexDirectory.toPath())) {
             return files
                 .filter(p -> p.toString().endsWith(".mvec"))
+                .filter(p -> {
+                    boolean isResolved = p.getFileName().toString().contains("-resolved");
+                    return useResolved == isResolved;
+                })
                 .findFirst()
                 .orElse(null);
         }
@@ -134,16 +146,20 @@ public class QueryMojo extends AbstractMojo {
     
     private void printResult(int rank, SearchResult result) {
         CodeChunk chunk = result.chunk();
-        
+
         getLog().info("");
         getLog().info(String.format("#%d [%.1f%%] %s %s",
             rank,
             result.similarity() * 100,
             chunk.type(),
             chunk.qualifiedName()));
-        
+
         getLog().info("    File: " + chunk.file() + ":" + chunk.lineStart());
-        
+
+        if (result.artifactId() != null) {
+            getLog().info("    Artifact: " + result.artifactId());
+        }
+
         if (showCode) {
             getLog().info("    " + "-".repeat(50));
             String preview = chunk.truncatedCode(200);

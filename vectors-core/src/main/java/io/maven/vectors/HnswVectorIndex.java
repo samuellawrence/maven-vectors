@@ -180,8 +180,9 @@ public class HnswVectorIndex implements VectorIndex {
         return hnswResults.stream()
             .map(r -> {
                 int chunkIndex = r.item().chunkIndex();
+                CodeChunk chunk = chunks.get(chunkIndex);
                 float similarity = 1.0f - r.distance(); // Convert distance to similarity
-                return SearchResult.of(chunks.get(chunkIndex), similarity);
+                return SearchResult.of(chunk, similarity, chunk.getArtifact());
             })
             .collect(Collectors.toList());
     }
@@ -204,8 +205,9 @@ public class HnswVectorIndex implements VectorIndex {
             .limit(topK)
             .map(r -> {
                 int chunkIndex = r.item().chunkIndex();
+                CodeChunk chunk = chunks.get(chunkIndex);
                 float similarity = 1.0f - r.distance();
-                return SearchResult.of(chunks.get(chunkIndex), similarity);
+                return SearchResult.of(chunk, similarity, chunk.getArtifact());
             })
             .collect(Collectors.toList());
     }
@@ -416,8 +418,21 @@ public class HnswVectorIndex implements VectorIndex {
         return index;
     }
     
+    // ==================== Entries ====================
+
+    @Override
+    public List<VectorEntry> entries() {
+        List<VectorEntry> result = new ArrayList<>(chunks.size());
+        for (int i = 0; i < chunks.size(); i++) {
+            CodeChunk chunk = chunks.get(i);
+            Optional<CodeVectorItem> item = hnswIndex.get(chunk.id());
+            item.ifPresent(cvi -> result.add(new VectorEntry(chunk, cvi.vector().clone())));
+        }
+        return result;
+    }
+
     // ==================== Metadata ====================
-    
+
     @Override
     public String getModelId() {
         return config.modelId();
